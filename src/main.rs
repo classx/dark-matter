@@ -10,7 +10,7 @@ const GPG_KEY_HASH_CONFIG: &str = "gpg_key_hash";
 
 #[derive(Parser)]
 #[command(name = "dark-matter")]
-#[command(about = "Dark matter - CLI утилита для безопасного управления файлами с GPG шифрованием")]
+#[command(about = "Dark matter - simple CLI vault with GPG encryption")]
 #[command(version = "1.0.0")]
 struct Cli {
     #[command(subcommand)]
@@ -19,36 +19,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Инициализирует новое хранилище в текущем каталоге
+    /// Init new vault in current directory
     Init {
-        /// Хеш GPG ключа для шифрования
+        /// Hash GPG key for encryption
         key_hash: String,
     },
-    /// Добавляет новый файл в хранилище
+    /// Add new file to vault
     Add {
-        /// Путь к файлу для добавления
+        /// Absolute path to file for adding
         filename: String,
     },
-    /// Отображает список всех файлов в хранилище
+    /// List all files in vault
     List,
-    /// Обновляет содержимое существующего файла в хранилище
+    /// Update existing file in vault
     Update {
-        /// Путь к файлу для обновления
+        /// Absolute path to file for updating
         filename: String,
     },
-    /// Удаляет файл из хранилища
+    /// Remove file from vault
     Remove {
-        /// Путь к файлу для удаления
+        /// Absolute path to file for removing
         filename: String,
     },
-    /// Экспортирует и расшифровывает файл из хранилища
+    /// Export and decrypt file from vault
     Export {
-        /// Путь к файлу для экспорта
+        /// Absolute path to file for exporting
         filename: String,
     },
-    /// Диагностика GPG ключа
+    /// Diagnose GPG key
     Diagnose {
-        /// Хеш GPG ключа для диагностики
+        /// Hash GPG key for diagnosing
         key_hash: String,
     },
 }
@@ -116,15 +116,15 @@ struct DataManager;
 
 impl DataManager {
     fn init(key_hash: &str) -> Result<(), DmError> {
-        // Проверяем, что база данных еще не существует
+        // Check if database already exists
         if Path::new(DB_NAME).exists() {
             return Err(DmError::DatabaseAlreadyExists);
         }
 
-        // Проверяем наличие GPG ключа
+        // Check if GPG key exists
         Self::verify_gpg_key(key_hash)?;
 
-        // Создаем базу данных и таблицы
+        // Create vault
         let conn = Connection::open(DB_NAME)?;
 
         conn.execute(
@@ -144,16 +144,13 @@ impl DataManager {
             [],
         )?;
 
-        // Сохраняем хеш ключа в конфигурации
+        // Save hash of GPG key in configuration
         conn.execute(
             "INSERT INTO config (key, value) VALUES (?1, ?2)",
             rusqlite::params![GPG_KEY_HASH_CONFIG, key_hash],
         )?;
 
-        println!(
-            "Хранилище успешно инициализировано с GPG ключом: {}",
-            key_hash
-        );
+        println!("Vault initialized with GPG key: {}", key_hash);
         Ok(())
     }
 
@@ -161,12 +158,12 @@ impl DataManager {
         let conn = Self::open_database()?;
         let realpath = Self::get_absolute_path(filename)?;
 
-        // Проверяем существование файла
+        // Check if file exists
         if !Path::new(filename).exists() {
             return Err(DmError::FileNotFound(filename.to_string()));
         }
 
-        // Проверяем, что файл еще не добавлен
+        // Check if file already added
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM flist WHERE realpath = ?1",
             rusqlite::params![&realpath],
@@ -177,22 +174,22 @@ impl DataManager {
             return Err(DmError::FileAlreadyExists(realpath));
         }
 
-        // Читаем содержимое файла
+        // Read file content
         let content = fs::read(filename)?;
 
-        // Получаем GPG ключ из конфигурации
+        // Get GPG key hash from configuration
         let key_hash = Self::get_gpg_key_hash(&conn)?;
 
-        // Шифруем содержимое
+        // Encrypt content
         let encrypted_content = Self::encrypt_content(&content, &key_hash)?;
 
-        // Сохраняем в базу данных
+        // Save to vault
         conn.execute(
             "INSERT INTO flist (realpath, body) VALUES (?1, ?2)",
             rusqlite::params![&realpath, &encrypted_content],
         )?;
 
-        println!("Файл '{}' успешно добавлен в хранилище", filename);
+        println!("File '{}' successfully added to vault", filename);
         Ok(())
     }
 
@@ -211,9 +208,9 @@ impl DataManager {
         }
 
         if files.is_empty() {
-            println!("Хранилище пусто");
+            println!("Vault is empty");
         } else {
-            println!("Файлы в хранилище:");
+            println!("List of files in vault:");
             for file in files {
                 println!("  {}", file);
             }
@@ -226,12 +223,12 @@ impl DataManager {
         let conn = Self::open_database()?;
         let realpath = Self::get_absolute_path(filename)?;
 
-        // Проверяем существование файла на диске
+        // Check if file exists on disk
         if !Path::new(filename).exists() {
             return Err(DmError::FileNotFound(filename.to_string()));
         }
 
-        // Проверяем, что файл есть в хранилище
+        // Check if file exists in vault
         let count: i64 = conn.query_row(
             "SELECT COUNT(*) FROM flist WHERE realpath = ?1",
             rusqlite::params![&realpath],
@@ -242,22 +239,22 @@ impl DataManager {
             return Err(DmError::FileNotInStorage(realpath));
         }
 
-        // Читаем новое содержимое файла
+        // Read new file content
         let content = fs::read(filename)?;
 
-        // Получаем GPG ключ из конфигурации
+        // Get GPG key hash from configuration
         let key_hash = Self::get_gpg_key_hash(&conn)?;
 
-        // Шифруем содержимое
+        // Encrypt content
         let encrypted_content = Self::encrypt_content(&content, &key_hash)?;
 
-        // Обновляем запись в базе данных
+        // Update record in vault
         conn.execute(
             "UPDATE flist SET body = ?1 WHERE realpath = ?2",
             rusqlite::params![&encrypted_content, &realpath],
         )?;
 
-        println!("Файл '{}' успешно обновлен в хранилище", filename);
+        println!("File '{}' successfully updated in vault", filename);
         Ok(())
     }
 
@@ -271,9 +268,9 @@ impl DataManager {
         )?;
 
         if rows_affected == 0 {
-            println!("Файл '{}' не найден в хранилище", filename);
+            println!("File '{}' not found in vault", filename);
         } else {
-            println!("Файл '{}' успешно удален из хранилища", filename);
+            println!("File '{}' successfully removed from vault", filename);
         }
 
         Ok(())
@@ -283,7 +280,7 @@ impl DataManager {
         let conn = Self::open_database()?;
         let realpath = Self::get_absolute_path(filename)?;
 
-        // Получаем зашифрованное содержимое из базы данных
+        // Get the encrypted content from the vault
         let encrypted_content: Vec<u8> = conn
             .query_row(
                 "SELECT body FROM flist WHERE realpath = ?1",
@@ -292,16 +289,16 @@ impl DataManager {
             )
             .map_err(|_| DmError::FileNotInStorage(realpath))?;
 
-        // Расшифровываем содержимое
+        // Decrypt the content
         let decrypted_content = Self::decrypt_content(&encrypted_content)?;
 
-        // Определяем имя файла для сохранения
+        // Get file name for saving
         let output_filename = Path::new(filename).file_name().unwrap().to_string_lossy();
 
-        // Проверяем, существует ли файл с таким именем
+        // Check if file exists
         if Path::new(&*output_filename).exists() {
             print!(
-                "Файл '{}' уже существует. Перезаписать? (y/N): ",
+                "File '{}' already exists. Overwrite? (y/N): ",
                 output_filename
             );
             io::stdout().flush()?;
@@ -310,15 +307,15 @@ impl DataManager {
             io::stdin().read_line(&mut input)?;
 
             if !input.trim().to_lowercase().starts_with('y') {
-                println!("Экспорт отменен");
+                println!("Export canceled");
                 return Ok(());
             }
         }
 
-        // Сохраняем расшифрованное содержимое
+        // Save decrypted content
         fs::write(&*output_filename, decrypted_content)?;
 
-        println!("Файл успешно экспортирован как '{}'", output_filename);
+        println!("File '{}' exported", output_filename);
         Ok(())
     }
 
@@ -343,25 +340,27 @@ impl DataManager {
     fn verify_gpg_key(key_hash: &str) -> Result<(), DmError> {
         let mut ctx = Context::from_protocol(Protocol::OpenPgp)?;
 
-        // Пытаемся найти ключ по хешу
+        // Get the key by hash
         match ctx.get_key(key_hash) {
             Ok(key) => {
-                // Проверяем, что ключ можно использовать для шифрования
+                // Check if the key can be used for encryption
                 if key.can_encrypt() {
-                    println!("GPG ключ найден и может использоваться для шифрования");
+                    println!("GPG key found and can be used for encryption");
                     Ok(())
                 } else {
-                    eprintln!("Найденный ключ не может использоваться для шифрования");
-                    eprintln!("Убедитесь, что ключ не истек и имеет возможность шифрования");
+                    eprintln!("Key cannot be used for encryption");
+                    eprintln!(
+                        "Please ensure the key is not expired and has encryption capabilities"
+                    );
                     Err(DmError::GpgKeyNotFound(format!(
-                        "{} (ключ не подходит для шифрования)",
+                        "{} (key cannot be used for encryption)",
                         key_hash
                     )))
                 }
             }
             Err(e) => {
-                eprintln!("Не удалось найти GPG ключ: {}", e);
-                eprintln!("Попробуйте выполнить: gpg --list-keys {}", key_hash);
+                eprintln!("GPG key not found: {}", e);
+                eprintln!("Try run: gpg --list-keys {}", key_hash);
                 Err(DmError::GpgKeyNotFound(key_hash.to_string()))
             }
         }
@@ -379,49 +378,49 @@ impl DataManager {
     fn encrypt_content(content: &[u8], key_hash: &str) -> Result<Vec<u8>, DmError> {
         let mut ctx = Context::from_protocol(Protocol::OpenPgp)?;
 
-        // Устанавливаем режим ASCII armor для лучшей совместимости
+        // Set armor mode for better compatibility
         ctx.set_armor(true);
 
-        // Получаем ключ
+        // Get key
         let key = ctx.get_key(key_hash)?;
 
-        // Проверяем, что ключ можно использовать для шифрования
+        // Check if key can encrypt
         if !key.can_encrypt() {
             return Err(DmError::GpgError(gpgme::Error::from_code(110))); // Generic unusable key error
         }
 
-        // Устанавливаем режим доверия (trust all keys)
+        // Set trust mode (trust all keys)
         ctx.set_offline(true);
 
         let mut output = Vec::new();
 
-        // Шифруем с более подробной обработкой ошибок
+        // Encrypt with more detailed error handling
         match ctx.encrypt(Some(&key), content, &mut output) {
             Ok(_) => {
                 println!(
-                    "Файл успешно зашифрован ({} байт -> {} байт)",
+                    "File encrypted successfully ({} bytes -> {} bytes)",
                     content.len(),
                     output.len()
                 );
                 Ok(output)
             }
             Err(e) => {
-                eprintln!("Ошибка шифрования: {}", e);
-                eprintln!("Код ошибки: {}", e.code());
+                eprintln!("Encrypt error: {}", e);
+                eprintln!("Error code: {}", e.code());
 
-                // Дополнительная диагностика
+                // Additional diagnostics
                 if e.code() == 110 {
                     // Using a generic error code for unusable pubkey
-                    eprintln!("Ключ не может быть использован для шифрования.");
-                    eprintln!("Возможные причины:");
-                    eprintln!("1. Ключ истек");
-                    eprintln!("2. Ключ отозван");
-                    eprintln!("3. Ключ не имеет подключа для шифрования");
-                    eprintln!("4. Недостаточный уровень доверия к ключу");
+                    eprintln!("GPG key cannot be used for encryption.");
+                    eprintln!("Possible reasons:");
+                    eprintln!("1. Key expired");
+                    eprintln!("2. Key revoked");
+                    eprintln!("3. Key has no encryption subkey");
+                    eprintln!("4. Insufficient trust level for key");
                     eprintln!("");
-                    eprintln!("Попробуйте выполнить:");
+                    eprintln!("Try running:");
                     eprintln!("  gpg --edit-key {} trust", key_hash);
-                    eprintln!("  (затем выберите '5' для абсолютного доверия)");
+                    eprintln!("  (then select '5' for absolute trust)");
                 }
 
                 Err(DmError::GpgError(e))
@@ -437,24 +436,24 @@ impl DataManager {
         match ctx.decrypt(encrypted_content, &mut output) {
             Ok(_) => {
                 println!(
-                    "Файл успешно расшифрован ({} байт -> {} байт)",
+                    "File successfully decrypted ({} bytes -> {} bytes)",
                     encrypted_content.len(),
                     output.len()
                 );
                 Ok(output)
             }
             Err(e) => {
-                eprintln!("Ошибка расшифровки: {}", e);
-                eprintln!("Код ошибки: {}", e.code());
+                eprintln!("Decrypt error: {}", e);
+                eprintln!("Error code: {}", e.code());
 
                 if e.code() == 9 {
                     // Generic "no secret key" error code
-                    eprintln!("Не найден приватный ключ для расшифровки");
-                    eprintln!("Убедитесь, что у вас есть соответствующий приватный ключ");
+                    eprintln!("GPG key not found");
+                    eprintln!("Make sure you have the corresponding private key");
                 } else if e.code() == 11 {
                     // Generic "bad passphrase" error code
-                    eprintln!("Неверный пароль для приватного ключа");
-                    eprintln!("Убедитесь, что gpg-agent запущен и настроен");
+                    eprintln!("Invalid passphrase for private key");
+                    eprintln!("Make sure gpg-agent is running and configured");
                 }
 
                 Err(DmError::GpgError(e))
@@ -467,64 +466,60 @@ impl DataManager {
 
         match ctx.get_key(key_hash) {
             Ok(key) => {
-                println!("✅ GPG ключ найден в keyring");
+                println!("✅ GPG key found in keyring");
 
                 // Check key capabilities
-                println!("\nВозможности ключа:");
+                println!("\nKey capabilities:");
                 println!(
-                    "  - Шифрование: {}",
+                    "  - Encryption: {}",
                     if key.can_encrypt() {
-                        "✅ Да"
+                        "✅ Yes"
                     } else {
-                        "❌ Нет"
+                        "❌ No"
                     }
                 );
                 println!(
-                    "  - Подпись: {}",
-                    if key.can_sign() {
-                        "✅ Да"
-                    } else {
-                        "❌ Нет"
-                    }
+                    "  - Signing: {}",
+                    if key.can_sign() { "✅ Yes" } else { "❌ No" }
                 );
                 println!(
-                    "  - Сертификация: {}",
+                    "  - Certification: {}",
                     if key.can_certify() {
-                        "✅ Да"
+                        "✅ Yes"
                     } else {
-                        "❌ Нет"
+                        "❌ No"
                     }
                 );
                 println!(
-                    "  - Аутентификация: {}",
+                    "  - Authentication: {}",
                     if key.can_authenticate() {
-                        "✅ Да"
+                        "✅ Yes"
                     } else {
-                        "❌ Нет"
+                        "❌ No"
                     }
                 );
 
                 // Display key details
-                println!("\nДетали ключа:");
-                println!("  - ID: {}", key.id().unwrap_or("Неизвестно"));
+                println!("\nDetails:");
+                println!("  - ID: {}", key.id().unwrap_or("Unknown"));
                 println!(
-                    "  - Отпечаток: {}",
-                    key.fingerprint().unwrap_or("Неизвестно")
+                    "  - Fingerprint: {}",
+                    key.fingerprint().unwrap_or("Unknown")
                 );
 
                 // Collect subkeys - direct collection without Result handling
                 let subkeys: Vec<_> = key.subkeys().collect();
 
-                println!("\nПодключи ({}):", subkeys.len());
+                println!("\Subkeys ({}):", subkeys.len());
                 for (i, subkey) in subkeys.iter().enumerate() {
-                    println!("  Подключ #{}", i + 1);
-                    println!("    - ID: {}", subkey.id().unwrap_or("Неизвестно"));
+                    println!("  Subkey #{}", i + 1);
+                    println!("    - ID: {}", subkey.id().unwrap_or("Unknown"));
                     println!(
-                        "    - Может шифровать: {}",
+                        "    - Can encrypt: {}",
                         if subkey.can_encrypt() {
-                            "✅ Да"
+                            "✅ Yes"
                         } else {
-                            "❌ Нет"
+                            "❌ No"
                         }
                     );
                 }
@@ -532,44 +527,44 @@ impl DataManager {
                 // Collect user IDs - direct collection without Result handling
                 let uids: Vec<_> = key.user_ids().collect();
 
-                println!("\nИдентификаторы пользователей ({}):", uids.len());
+                println!("\nUser IDs ({}):", uids.len());
                 for (i, uid) in uids.iter().enumerate() {
-                    println!("  Идентификатор #{}", i + 1);
-                    println!("    - Имя: {}", uid.name().unwrap_or("Неизвестно"));
-                    println!("    - Email: {}", uid.email().unwrap_or("Неизвестно"));
+                    println!("  ID #{}", i + 1);
+                    println!("    - Name: {}", uid.name().unwrap_or("Unknown"));
+                    println!("    - Email: {}", uid.email().unwrap_or("Unknown"));
                 }
 
                 // Test encryption capability with a small message
                 if key.can_encrypt() {
-                    println!("\nТестирование шифрования:");
+                    println!("\nEncryption testing:");
                     let test_data = b"Test encryption capability";
                     match Self::encrypt_content(test_data, key_hash) {
-                        Ok(_) => println!("  ✅ Шифрование успешно"),
-                        Err(e) => println!("  ❌ Шифрование не удалось: {}", e),
+                        Ok(_) => println!("  ✅ Encryption successful"),
+                        Err(e) => println!("  ❌ Encryption failed: {}", e),
                     }
                 } else {
                     println!(
-                        "\nТестирование шифрования: ❌ Пропущено (ключ не поддерживает шифрование)"
+                        "\nEncryption testing: ❌ Skipped (key does not support encryption)"
                     );
                 }
 
                 // Additional diagnostics and recommendations
                 if !key.can_encrypt() {
-                    println!("\n❌ Проблема: Ключ не может использоваться для шифрования");
-                    println!("   Решение: Создайте новый ключ с возможностью шифрования или добавьте подключ для шифрования");
+                    println!("\n❌ Problem: Key cannot be used for encryption");
+                    println!("   Solution: Create a new key with encryption capability or add a subkey for encryption");
                 } else {
-                    println!("\n✅ Ключ подходит для использования с dm");
+                    println!("\n✅ Key is suitable for use with dark-matter");
                 }
 
                 Ok(())
             }
             Err(e) => {
-                println!("❌ GPG ключ не найден: {}", e);
-                println!("\nДиагностика:");
-                println!("1. Проверьте правильность хеша: {}", key_hash);
-                println!("2. Проверьте доступные ключи:");
+                println!("❌ GPG key not found: {}", e);
+                println!("\nDiagnosis:");
+                println!("1. Check the hash: {}", key_hash);
+                println!("2. Check available keys:");
                 println!("   $ gpg --list-keys");
-                println!("3. Возможно, нужно импортировать ключ:");
+                println!("3. Maybe you need to import the key:");
                 println!("   $ gpg --import path/to/key.asc");
 
                 Err(DmError::GpgKeyNotFound(key_hash.to_string()))
