@@ -1,0 +1,70 @@
+Custom Dual License Agreement
+=============================
+
+Copyright (c) 2025 Alexey Nikandrov
+All rights reserved.
+
+This software is dual-licensed under the terms outlined below.
+
+──────────────────────────────────────────────────────────────
+1. Source-Available Evaluation License (Default)
+──────────────────────────────────────────────────────────────
+
+Unless a separate commercial license has been granted, you are permitted to:
+
+✓ View and study the source code  
+✓ Use the software for personal, non-commercial evaluation
+
+However, you are **not permitted** to:
+
+✗ Modify, fork, or create derivative works  
+✗ Redistribute the code or binaries  
+✗ Use the software in commercial or production environments  
+✗ Incorporate any part of the code into other software
+
+Any such use **requires prior written permission** from the author.
+
+──────────────────────────────────────────────────────────────
+2. Commercial License (By Agreement Only)
+──────────────────────────────────────────────────────────────
+
+To use this software in any of the following ways:
+
+- In commercial or for-profit contexts  
+- In modified or derivative form  
+- As part of a larger system or distribution  
+- With extended support or integration
+
+You must obtain a **separate commercial license** from the copyright holder.
+
+To inquire about licensing terms, pricing, or to request permission, contact:
+
+📩 Alexey Nikandrov
+✉️  [classx@gmail.com]
+
+──────────────────────────────────────────────────────────────
+3. Intellectual Property and Derivative Works
+──────────────────────────────────────────────────────────────
+
+All intellectual property rights remain with the original author.
+
+Any derivative works, if permitted under commercial licensing, must clearly state:
+- That they are derived from this software
+- Include attribution to the original author
+- Provide a link to the original repository
+
+──────────────────────────────────────────────────────────────
+4. Disclaimer of Warranty
+──────────────────────────────────────────────────────────────
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.  
+THE AUTHOR SHALL NOT BE LIABLE FOR ANY DAMAGES OR LOSSES RESULTING FROM THE USE OF THIS SOFTWARE.
+
+──────────────────────────────────────────────────────────────
+5. Final Notes
+──────────────────────────────────────────────────────────────
+
+This license does **not** comply with the Open Source Definition by the OSI.  
+It is a **source-available**, proprietary license.
+
+By using or accessing any part of this repository, you agree to these terms.
