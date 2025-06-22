@@ -10,7 +10,7 @@ const GPG_KEY_HASH_CONFIG: &str = "gpg_key_hash";
 
 #[derive(Parser)]
 #[command(name = "dark-matter")]
-#[command(about = "dark matter - CLI утилита для безопасного управления файлами с GPG шифрованием")]
+#[command(about = "Dark matter - CLI утилита для безопасного управления файлами с GPG шифрованием")]
 #[command(version = "1.0.0")]
 struct Cli {
     #[command(subcommand)]
