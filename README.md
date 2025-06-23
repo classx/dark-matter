@@ -20,11 +20,15 @@ Dark Matter is a command-line tool for secure file management using GPG encrypti
 ## Installation
 
 1. Clone the repository
-2. Build the project using Cargo:
+2. Install gpg dependencies
+   ```
+   sudo apt-get install libgpgme-dev
+   ```
+4. Build the project using Cargo:
    ```bash
    cargo build --release
    ```
-3. The binary will be available in `target/release/dark-matter`
+5. The binary will be available in `target/release/dark-matter`
 
 ## Usage
 
