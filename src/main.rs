@@ -5,12 +5,12 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-const DB_NAME: &str = "dm.db";
+const DB_NAME: &str = "dm-vault.db";
 const GPG_KEY_HASH_CONFIG: &str = "gpg_key_hash";
 
 #[derive(Parser)]
 #[command(name = "dark-matter")]
-#[command(about = "Dark matter - simple CLI vault with GPG encryption")]
+#[command(about = "Dark matter - simple vault CLI utility with GPG encryption")]
 #[command(version = "1.0.0")]
 struct Cli {
     #[command(subcommand)]
@@ -45,10 +45,18 @@ enum Commands {
     Export {
         /// Absolute path to file for exporting
         filename: String,
+
+        /// Export to current directory
+        #[arg(short, long, default_value_t = false)]
+        relative: bool,
+
+        /// Export to current directory
+        #[arg(short = 'y', long = "yes", default_value_t = false)]
+        confirm: bool,
     },
-    /// Diagnose GPG key
-    Diagnose {
-        /// Hash GPG key for diagnosing
+    /// Validate GPG key
+    Validate {
+        /// Hash GPG key for validate
         key_hash: String,
     },
 }
@@ -70,24 +78,24 @@ impl std::fmt::Display for DmError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DmError::DatabaseNotFound => {
-                write!(f, "Ошибка: База данных dm.db не найдена в текущем каталоге")
+                write!(f, "Error: database dm-vault.db not found. Please run 'dm init <gpg_key_hash>' to create a new vault.")
             }
-            DmError::DatabaseAlreadyExists => write!(f, "Ошибка: База данных dm.db уже существует"),
-            DmError::FileNotFound(path) => write!(f, "Ошибка: Файл '{}' не найден", path),
+            DmError::DatabaseAlreadyExists => write!(f, "Error: database dm-vault.db already exists. Please remove it or use a different directory."),
+            DmError::FileNotFound(path) => write!(f, "Error: File '{}' not found", path),
             DmError::GpgKeyNotFound(hash) => {
-                write!(f, "Ошибка: GPG ключ с хешем '{}' не найден", hash)
+                write!(f, "Error: GPG key '{}' not found", hash)
             }
             DmError::FileAlreadyExists(path) => write!(
                 f,
-                "Ошибка: Файл '{}' уже существует в хранилище. Используйте команду update",
+                "Error: File '{}' already exists in vault. Use 'dm update <filename>' to update it.",
                 path
             ),
             DmError::FileNotInStorage(path) => {
-                write!(f, "Ошибка: Файл '{}' не найден в хранилище", path)
+                write!(f, "Error: File '{}' not found in vault", path)
             }
-            DmError::DatabaseError(e) => write!(f, "Ошибка базы данных: {}", e),
-            DmError::GpgError(e) => write!(f, "Ошибка GPG: {}", e),
-            DmError::IoError(e) => write!(f, "Ошибка ввода/вывода: {}", e),
+            DmError::DatabaseError(e) => write!(f, "Database error: {}", e),
+            DmError::GpgError(e) => write!(f, "GPG error: {}", e),
+            DmError::IoError(e) => write!(f, "IO error: {}", e),
         }
     }
 }
@@ -276,7 +284,7 @@ impl DataManager {
         Ok(())
     }
 
-    fn export(filename: &str) -> Result<(), DmError> {
+    fn export(filename: &str, rel: bool, confirm: bool) -> Result<(), DmError> {
         let conn = Self::open_database()?;
         let realpath = Self::get_absolute_path(filename)?;
 
@@ -293,22 +301,25 @@ impl DataManager {
         let decrypted_content = Self::decrypt_content(&encrypted_content)?;
 
         // Get file name for saving
-        let output_filename = Path::new(filename).file_name().unwrap().to_string_lossy();
+        let mut output_filename = Path::new(filename).to_string_lossy();
+        if rel {
+            output_filename = Path::new(filename).file_name().unwrap().to_string_lossy();
+        }
 
+        if !confirm {
         // Check if file exists
-        if Path::new(&*output_filename).exists() {
-            print!(
-                "File '{}' already exists. Overwrite? (y/N): ",
-                output_filename
-            );
-            io::stdout().flush()?;
-
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-
-            if !input.trim().to_lowercase().starts_with('y') {
-                println!("Export canceled");
-                return Ok(());
+            if Path::new(&*output_filename).exists() {
+                print!(
+                    "File '{}' already exists. Overwrite? (y/N): ",
+                    output_filename
+                );
+                io::stdout().flush()?;
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                if !input.trim().to_lowercase().starts_with('y') {
+                    println!("Export canceled");
+                    return Ok(());
+                }
             }
         }
 
@@ -510,7 +521,7 @@ impl DataManager {
                 // Collect subkeys - direct collection without Result handling
                 let subkeys: Vec<_> = key.subkeys().collect();
 
-                println!("\Subkeys ({}):", subkeys.len());
+                println!("Subkeys ({}):", subkeys.len());
                 for (i, subkey) in subkeys.iter().enumerate() {
                     println!("  Subkey #{}", i + 1);
                     println!("    - ID: {}", subkey.id().unwrap_or("Unknown"));
@@ -582,8 +593,8 @@ fn main() {
         Commands::List => DataManager::list(),
         Commands::Update { filename } => DataManager::update(&filename),
         Commands::Remove { filename } => DataManager::remove(&filename),
-        Commands::Export { filename } => DataManager::export(&filename),
-        Commands::Diagnose { key_hash } => DataManager::diagnose_key(&key_hash),
+        Commands::Export { filename, relative, confirm } => DataManager::export(&filename, relative, confirm),
+        Commands::Validate { key_hash } => DataManager::diagnose_key(&key_hash),
     };
 
     if let Err(error) = result {

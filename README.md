@@ -1,6 +1,6 @@
-# Dark Matter - Secure File Management System
+# Dark matter - simple vault CLI utility with GPG encryption
 
-Dark Matter is a command-line tool for secure file management using GPG encryption. It provides a robust way to store, manage, and track encrypted files while maintaining security through GPG key verification.
+Dark Matter is a command-line tool for secure file management using GPG encryption. It provides a robust way to vault, manage, and track encrypted files while maintaining security through GPG key verification.
 
 ## Features
 
@@ -34,27 +34,49 @@ Dark Matter is a command-line tool for secure file management using GPG encrypti
 
 ### Initialize Storage
 
-Before using Dark Matter, you need to initialize it with your GPG key hash:
+Get list of gpg keys
 
 ```bash
+gpg --list-keys
+```
+
+Create your GPG key
+
+```bash
+gpg --full-generate-key
+```
+
+Validate your GPG key
+
+```bash
+dark-matter validate <key-hash>
+```
+
+Before using Dark Matter, you need to initialize vault it with your GPG key hash:
+
+```bash
+
+# create dir
+mkdir vault
+cd vault
 dark-matter init <key-hash>
 ```
 
-The key hash can be obtained from your GPG keyring. This creates a new database and configures Dark Matter for use with your key.
+The key hash can be obtained from your GPG keyring. This creates a new vault and configures Dark Matter for use with your key.
 
 ### Adding Files
 
-To add a new file to secure storage:
+To add a new file to vault:
 
 ```bash
 dark-matter add <filename>
 ```
 
-The file will be encrypted using your GPG key and stored in the Dark Matter database.
+The file will be encrypted using your GPG key and stored in the Dark Matter vault.
 
 ### Listing Files
 
-View all files in storage:
+View all files in vault:
 
 ```bash
 dark-matter list
@@ -62,7 +84,7 @@ dark-matter list
 
 ### Updating Files
 
-Update an existing file in storage:
+Update an existing file in vault:
 
 ```bash
 dark-matter update <filename>
@@ -72,7 +94,7 @@ This creates a new encrypted version of the file while maintaining version histo
 
 ### Removing Files
 
-Remove a file from storage:
+Remove a file from vault:
 
 ```bash
 dark-matter remove <filename>
@@ -80,7 +102,7 @@ dark-matter remove <filename>
 
 ### Exporting Files
 
-Export a file from storage (decrypts to original form):
+Export a file from vault (decrypts file to original path):
 
 ```bash
 dark-matter export <filename>
@@ -91,7 +113,7 @@ dark-matter export <filename>
 Verify GPG key configuration and system status:
 
 ```bash
-dark-matter diagnose <key-hash>
+dark-matter validate <key-hash>
 ```
 
 ## Error Handling

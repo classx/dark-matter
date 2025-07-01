@@ -2,7 +2,7 @@
 name = "dark-matter"
 version = "0.1.0"
 edition = "2021"
-description = "Dark matter - CLI утилита для безопасного управления файлами с GPG шифрованием"
+description = "Dark matter - simple vault CLI utility with GPG encryption"
 authors = ["Your Name <classx@gmail.com>"]
 license = "MIT"
 
