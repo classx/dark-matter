@@ -29,10 +29,55 @@ pub enum Commands {
         #[command(subcommand)]
         action: FileCommands,
     },
+    /// Secret management operations
+    Secret {
+        #[command(subcommand)]
+        action: SecretsCommands,
+    },
     /// Key validation and diagnostics
     Keys {
         #[command(subcommand)]
         action: KeysCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SecretsCommands {
+    /// Add new secret to vault
+    Add {
+        /// Name of the secret
+        name: String,
+        /// New value for the secret
+        value: String,
+        /// Optional tags for the secret. Comma-separated.
+        #[arg(short, long, default_value = "")]
+        tags: String,
+    },
+    /// List all secrets in vault
+    List {
+        /// Optional tags for the secret. Comma-separated.
+        #[arg(short, long, default_value = "")]
+        tags: String,
+    },
+    /// Update existing secret in vault
+    Update {
+        /// Name of the secret to update
+        name: String,
+        /// New value for the secret
+        value: String,
+        /// Optional tags for the secret. Comma-separated.
+        #[arg(short, long, default_value = "")]
+        tags: String,
+    },
+    /// Remove secret from vault
+    Remove {
+        /// Name of the secret to remove
+        name: String,
+    },
+    /// Show secret from vault
+    Show {
+        /// Name of the secret to show
+        name: String,
     },
 }
 
@@ -87,6 +132,7 @@ enum DmError {
     GpgKeyNotFound(String),
     FileAlreadyExists(String),
     FileNotInStorage(String),
+    SecretNotInStorage(String),
     DatabaseError(rusqlite::Error),
     GpgError(gpgme::Error),
     IoError(io::Error),
@@ -102,6 +148,9 @@ impl std::fmt::Display for DmError {
             DmError::FileNotFound(path) => write!(f, "Error: File '{}' not found", path),
             DmError::GpgKeyNotFound(hash) => {
                 write!(f, "Error: GPG key '{}' not found", hash)
+            }
+            DmError::SecretNotInStorage(name) => {
+                write!(f, "Error: Secret '{}' not found in vault", name)
             }
             DmError::FileAlreadyExists(path) => write!(
                 f,
@@ -162,6 +211,16 @@ impl DataManager {
         )?;
 
         conn.execute(
+            "CREATE TABLE secrets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                body BLOB NOT NULL,
+                tags TEXT DEFAULT ''
+            )",
+            [],
+        )?;
+
+        conn.execute(
             "CREATE TABLE flist (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 realpath TEXT NOT NULL UNIQUE,
@@ -180,6 +239,143 @@ impl DataManager {
         Ok(())
     }
 
+    // secrets management methods
+    fn add_secret(name: &str, value: &str, tags: &str) -> Result<(), DmError> {
+        let conn = Self::open_database()?;
+
+        // Check if secret already exists
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(id) FROM secrets WHERE name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )?;
+
+        if count > 0 {
+            return Err(DmError::FileAlreadyExists(name.to_string()));
+        }
+
+        // Encrypt the value
+        let key_hash = Self::get_gpg_key_hash(&conn)?;
+        let encrypted_value = Self::encrypt_content(value.as_bytes(), &key_hash)?;
+
+        // Insert into database
+        conn.execute(
+            "INSERT INTO secrets (name, body, tags) VALUES (?1, ?2, ?3)",
+            rusqlite::params![name, encrypted_value, tags],
+        )?;
+
+        println!("Secret '{}' successfully added", name);
+        Ok(())
+    }
+
+    fn list_secrets(tags: &str) -> Result<(), DmError> {
+        let conn = Self::open_database()?;
+
+        let mut stmt = conn.prepare("SELECT name, tags FROM secrets ORDER BY name")?;
+        let secret_iter = stmt.query_map([], |row| {
+            let name: String = row.get(0)?;
+            let tags: String = row.get(1)?;
+            Ok((name, tags))
+        })?;
+
+        let mut secrets = Vec::new();
+        for secret in secret_iter {
+            let secret: (String, String) = secret?;
+            if !tags.is_empty() {
+                // Filter by tags if specified
+                if !secret
+                    .1
+                    .split(',')
+                    .any(|t| tags.split(',').any(|tag| tag.trim() == t.trim()))
+                {
+                    continue;
+                }
+            }
+            secrets.push(secret);
+        }
+
+        if secrets.is_empty() {
+            println!("No secrets found in vault");
+        } else {
+            println!("List of secrets in vault:");
+            for (name, tags) in secrets {
+                println!("  {} tags: {}", name, tags);
+            }
+        }
+        Ok(())
+    }
+
+    fn update_secret(name: &str, value: &str, tags: &str) -> Result<(), DmError> {
+        let conn = Self::open_database()?;
+
+        // Check if secret exists
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(id) FROM secrets WHERE name = ?1",
+            rusqlite::params![name],
+            |row| row.get(0),
+        )?;
+
+        if count == 0 {
+            return Err(DmError::FileNotInStorage(name.to_string()));
+        }
+
+        // Encrypt the new value
+        let key_hash = Self::get_gpg_key_hash(&conn)?;
+        let encrypted_value = Self::encrypt_content(value.as_bytes(), &key_hash)?;
+
+        // Update the secret
+        if !tags.is_empty() {
+            conn.execute(
+                "UPDATE secrets SET body = ?1, tags = ?2 WHERE name = ?3",
+                rusqlite::params![encrypted_value, tags, name],
+            )?;
+        } else {
+            conn.execute(
+                "UPDATE secrets SET body = ?1 WHERE name = ?2",
+                rusqlite::params![encrypted_value, name],
+            )?;
+        }
+
+        println!("Secret '{}' successfully updated", name);
+        Ok(())
+    }
+
+    fn remove_secret(name: &str) -> Result<(), DmError> {
+        let conn = Self::open_database()?;
+
+        let rows_affected = conn.execute(
+            "DELETE FROM secrets WHERE name = ?1",
+            rusqlite::params![name],
+        )?;
+
+        if rows_affected == 0 {
+            println!("Secret '{}' not found in vault", name);
+        } else {
+            println!("Secret '{}' successfully removed from vault", name);
+        }
+        Ok(())
+    }
+
+    fn show_secret(name: &str) -> Result<(), DmError> {
+        let conn = Self::open_database()?;
+
+        // Get the encrypted secret
+        let encrypted_value: Vec<u8> = conn
+            .query_row(
+                "SELECT body FROM secrets WHERE name = ?1",
+                rusqlite::params![name],
+                |row| row.get(0),
+            )
+            .map_err(|_| DmError::SecretNotInStorage(name.to_string()))?;
+
+        // Decrypt the secret
+        let decrypted_value = Self::decrypt_content(&encrypted_value)?;
+
+        println!("{}", String::from_utf8_lossy(&decrypted_value));
+        Ok(())
+    }
+
+    // File management methods
     fn add(filename: &str) -> Result<(), DmError> {
         let conn = Self::open_database()?;
         let realpath = Self::get_absolute_path(filename)?;
@@ -426,11 +622,11 @@ impl DataManager {
         // Encrypt with more detailed error handling
         match ctx.encrypt(Some(&key), content, &mut output) {
             Ok(_) => {
-                println!(
-                    "File encrypted successfully ({} bytes -> {} bytes)",
-                    content.len(),
-                    output.len()
-                );
+                // println!(
+                //     "File encrypted successfully ({} bytes -> {} bytes)",
+                //     content.len(),
+                //     output.len()
+                // );
                 Ok(output)
             }
             Err(e) => {
@@ -464,11 +660,11 @@ impl DataManager {
 
         match ctx.decrypt(encrypted_content, &mut output) {
             Ok(_) => {
-                println!(
-                    "File successfully decrypted ({} bytes -> {} bytes)",
-                    encrypted_content.len(),
-                    output.len()
-                );
+                // println!(
+                //     "File successfully decrypted ({} bytes -> {} bytes)",
+                //     encrypted_content.len(),
+                //     output.len()
+                // );
                 Ok(output)
             }
             Err(e) => {
@@ -600,6 +796,56 @@ impl DataManager {
     }
 }
 
+fn handle_secrets_command(action: SecretsCommands) -> Result<(), DmError> {
+    match action {
+        SecretsCommands::Add { name, value, tags } => {
+            // Here you would implement the logic to add a secret
+            //println!("Adding secret '{}' with tags '{}'", name, tags);
+            DataManager::add_secret(&name, &value, &tags).map_err(|e| {
+                eprintln!("Error adding secret: {}", e);
+                e
+            })?;
+            Ok(())
+        }
+        SecretsCommands::List { tags } => {
+            // Here you would implement the logic to list secrets
+            //println!("Listing all secrets");
+            DataManager::list_secrets(&tags).map_err(|e| {
+                eprintln!("Error listing secrets: {}", e);
+                e
+            })?;
+            Ok(())
+        }
+        SecretsCommands::Update { name, value, tags } => {
+            // Here you would implement the logic to update a secret
+            //println!("Updating secret '{}' with tags '{}'", name, tags);
+            DataManager::update_secret(&name, &value, &tags).map_err(|e| {
+                eprintln!("Error updating secret: {}", e);
+                e
+            })?;
+            Ok(())
+        }
+        SecretsCommands::Remove { name } => {
+            // Here you would implement the logic to remove a secret
+            //println!("Removing secret '{}'", name);
+            DataManager::remove_secret(&name).map_err(|e| {
+                eprintln!("Error removing secret: {}", e);
+                e
+            })?;
+            Ok(())
+        }
+        SecretsCommands::Show { name } => {
+            // Here you would implement the logic to show a secret
+            //println!("Showing secret '{}'", name);
+            DataManager::show_secret(&name).map_err(|e| {
+                eprintln!("Error showing secret: {}", e);
+                e
+            })?;
+            Ok(())
+        }
+    }
+}
+
 fn handle_key_command(action: KeysCommands) -> Result<(), DmError> {
     match action {
         KeysCommands::Validate { key_hash } => DataManager::diagnose_key(&key_hash),
@@ -626,6 +872,7 @@ fn main() {
         Commands::Init { key_hash } => DataManager::init(&key_hash),
         Commands::File { action } => handle_file_command(action),
         Commands::Keys { action } => handle_key_command(action),
+        Commands::Secret { action } => handle_secrets_command(action),
     };
     if let Err(error) = result {
         eprintln!("{}", error);
