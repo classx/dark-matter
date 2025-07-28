@@ -18,12 +18,35 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Init new vault in current directory
     Init {
         /// Hash GPG key for encryption
         key_hash: String,
     },
+    /// File management operations
+    File {
+        #[command(subcommand)]
+        action: FileCommands,
+    },
+    /// Key validation and diagnostics
+    Keys {
+        #[command(subcommand)]
+        action: KeysCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum KeysCommands {
+    /// Validate GPG key for use with dark-matter
+    Validate {
+        /// Hash of GPG key to validate
+        key_hash: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum FileCommands {
     /// Add new file to vault
     Add {
         /// Absolute path to file for adding
@@ -53,11 +76,6 @@ enum Commands {
         /// Export to current directory
         #[arg(short = 'y', long = "yes", default_value_t = false)]
         confirm: bool,
-    },
-    /// Validate GPG key
-    Validate {
-        /// Hash GPG key for validate
-        key_hash: String,
     },
 }
 
@@ -307,7 +325,7 @@ impl DataManager {
         }
 
         if !confirm {
-        // Check if file exists
+            // Check if file exists
             if Path::new(&*output_filename).exists() {
                 print!(
                     "File '{}' already exists. Overwrite? (y/N): ",
@@ -554,9 +572,7 @@ impl DataManager {
                         Err(e) => println!("  ❌ Encryption failed: {}", e),
                     }
                 } else {
-                    println!(
-                        "\nEncryption testing: ❌ Skipped (key does not support encryption)"
-                    );
+                    println!("\nEncryption testing: ❌ Skipped (key does not support encryption)");
                 }
 
                 // Additional diagnostics and recommendations
@@ -584,19 +600,33 @@ impl DataManager {
     }
 }
 
+fn handle_key_command(action: KeysCommands) -> Result<(), DmError> {
+    match action {
+        KeysCommands::Validate { key_hash } => DataManager::diagnose_key(&key_hash),
+    }
+}
+
+fn handle_file_command(action: FileCommands) -> Result<(), DmError> {
+    match action {
+        FileCommands::Add { filename } => DataManager::add(&filename),
+        FileCommands::List => DataManager::list(),
+        FileCommands::Update { filename } => DataManager::update(&filename),
+        FileCommands::Remove { filename } => DataManager::remove(&filename),
+        FileCommands::Export {
+            filename,
+            relative,
+            confirm,
+        } => DataManager::export(&filename, relative, confirm),
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
-
     let result = match cli.command {
         Commands::Init { key_hash } => DataManager::init(&key_hash),
-        Commands::Add { filename } => DataManager::add(&filename),
-        Commands::List => DataManager::list(),
-        Commands::Update { filename } => DataManager::update(&filename),
-        Commands::Remove { filename } => DataManager::remove(&filename),
-        Commands::Export { filename, relative, confirm } => DataManager::export(&filename, relative, confirm),
-        Commands::Validate { key_hash } => DataManager::diagnose_key(&key_hash),
+        Commands::File { action } => handle_file_command(action),
+        Commands::Keys { action } => handle_key_command(action),
     };
-
     if let Err(error) = result {
         eprintln!("{}", error);
         std::process::exit(1);
