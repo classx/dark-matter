@@ -29,10 +29,55 @@ pub enum Commands {
         #[command(subcommand)]
         action: FileCommands,
     },
+    /// Secret management operations
+    Secret {
+        #[command(subcommand)]
+        action: SecretsCommands,
+    },
     /// Key validation and diagnostics
     Keys {
         #[command(subcommand)]
         action: KeysCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SecretsCommands {
+    /// Add new secret to vault
+    Add {
+        /// Name of the secret
+        name: String,
+        /// New value for the secret
+        value: String,
+        /// Optional tags for the secret. Comma-separated.
+        #[arg(short, long, default_value = "")]
+        tags: String,
+    },
+    /// List all secrets in vault
+    List {
+        /// Optional tags for the secret. Comma-separated.
+        #[arg(short, long, default_value = "")]
+        tags: String,
+    },
+    /// Update existing secret in vault
+    Update {
+        /// Name of the secret to update
+        name: String,
+        /// New value for the secret
+        value: String,
+        /// Optional tags for the secret. Comma-separated.
+        #[arg(short, long, default_value = "")]
+        tags: String,
+    },
+    /// Remove secret from vault
+    Remove {
+        /// Name of the secret to remove
+        name: String,
+    },
+    /// Show secret from vault
+    Show {
+        /// Name of the secret to show
+        name: String,
     },
 }
 
@@ -600,6 +645,36 @@ impl DataManager {
     }
 }
 
+fn handle_secrets_command(action: SecretsCommands) -> Result<(), DmError> {
+    match action {
+        SecretsCommands::Add { name, value, tags } => {
+            // Here you would implement the logic to add a secret
+            println!("Adding secret '{}' with tags '{}'", name, tags);
+            Ok(())
+        }
+        SecretsCommands::List { tags } => {
+            // Here you would implement the logic to list secrets
+            println!("Listing all secrets");
+            Ok(())
+        }
+        SecretsCommands::Update { name, value, tags } => {
+            // Here you would implement the logic to update a secret
+            println!("Updating secret '{}' with tags '{}'", name, tags);
+            Ok(())
+        }
+        SecretsCommands::Remove { name } => {
+            // Here you would implement the logic to remove a secret
+            println!("Removing secret '{}'", name);
+            Ok(())
+        }
+        SecretsCommands::Show { name } => {
+            // Here you would implement the logic to show a secret
+            println!("Showing secret '{}'", name);
+            Ok(())
+        }
+    }
+}
+
 fn handle_key_command(action: KeysCommands) -> Result<(), DmError> {
     match action {
         KeysCommands::Validate { key_hash } => DataManager::diagnose_key(&key_hash),
@@ -626,6 +701,7 @@ fn main() {
         Commands::Init { key_hash } => DataManager::init(&key_hash),
         Commands::File { action } => handle_file_command(action),
         Commands::Keys { action } => handle_key_command(action),
+        Commands::Secret { action } => handle_secrets_command(action),
     };
     if let Err(error) = result {
         eprintln!("{}", error);
