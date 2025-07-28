@@ -207,6 +207,16 @@ impl DataManager {
         )?;
 
         conn.execute(
+            "CREATE TABLE secrets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                body BLOB NOT NULL,
+                tags TEXT DEFAULT ''
+            )",
+            [],
+        )?;
+
+        conn.execute(
             "CREATE TABLE flist (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 realpath TEXT NOT NULL UNIQUE,
