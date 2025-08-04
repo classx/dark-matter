@@ -1,0 +1,179 @@
+name: Publish release binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      test:
+        description: 'Testing the release workflow'
+        required: true
+        default: 'true'
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: Publish for ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        name:
+          - linux
+        include:
+          - name: linux
+            os: ubuntu-latest
+            build_deps: >
+              libgpgme-dev sqlite3 libsqlite3-dev
+            archive_name: dark-matter.tar.gz
+            asset_suffix: x86_64-linux.tar.gz
+            target: x86_64-unknown-linux-gnu
+    steps:
+      - name: Install linux build dependencies
+        run: sudo apt update && sudo apt install ${{ matrix.build_deps }}
+        if: matrix.build_deps != ''
+
+      - name: cargo build
+        run: cargo build --release
+
+      - name: Create archive
+        run: |
+          mkdir -p release/dm
+          mv target/${{ matrix.target }}/release/dark-matter release/dm/
+          rm release/*.d
+          tar czf ${{ matrix.archive_name }} -C release/ dm/
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: 'release/dm/*'
+
+      - name: Upload archive as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dark-matter-${{ matrix.asset_suffix }}
+          path: ${{ matrix.archive_name }}
+        if: github.event.inputs.test == 'true'
+
+      - name: Upload archive to release
+        uses: svenstaro/upload-release-action@2.9.0
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: ${{ matrix.archive_name }}
+          asset_name: dark-matter-$tag-${{ matrix.asset_suffix }}
+          tag: ${{ github.ref }}
+          prerelease: true
+        if: github.event.inputs.test != 'true'
+
+  # deb:
+  #   name: Debian ${{ matrix.name }}
+  #   runs-on: ubuntu-20.04
+  #   strategy:
+  #     matrix:
+  #       name: [linux, linux-musl, armv7, armv7-musl, arm64, arm64-musl]
+  #       include:
+  #         - name: linux
+  #           target: x86_64-unknown-linux-gnu
+  #           build_deps: >
+  #             libfuse-dev
+  #           build_flags: --features mount
+
+  #         - name: linux-musl
+  #           target: x86_64-unknown-linux-musl
+  #           build_deps: >
+  #             musl-tools
+  #           deb_flags: --variant=musl
+
+  #         - name: armv7
+  #           target: armv7-unknown-linux-gnueabihf
+  #           build_deps: >
+  #             gcc-arm-linux-gnueabihf
+  #           cargo_config: |
+  #             [target.armv7-unknown-linux-gnueabihf]
+  #             linker = "arm-linux-gnueabihf-gcc"
+
+  #         - name: armv7-musl
+  #           target: armv7-unknown-linux-musleabihf
+  #           build_deps: >
+  #             gcc-arm-linux-gnueabihf
+  #             musl-tools
+  #           cargo_config: |
+  #             [target.armv7-unknown-linux-musleabihf]
+  #             linker = "arm-linux-gnueabihf-gcc"
+  #           deb_flags: --variant=musl
+
+  #         - name: arm64
+  #           target: aarch64-unknown-linux-gnu
+  #           build_deps: >
+  #             gcc-aarch64-linux-gnu
+  #           cargo_config: |
+  #             [target.aarch64-unknown-linux-gnu]
+  #             linker = "aarch64-linux-gnu-gcc"
+
+  #         - name: arm64-musl
+  #           target: aarch64-unknown-linux-musl
+  #           build_deps: >
+  #             gcc-aarch64-linux-gnu
+  #             musl-tools
+  #           cargo_config: |
+  #             [target.aarch64-unknown-linux-musl]
+  #             linker = "aarch64-linux-gnu-gcc"
+  #           deb_flags: --variant=musl
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@stable
+  #       id: toolchain
+  #       with:
+  #         targets: ${{ matrix.target }}
+  #     - run: rustup override set ${{steps.toolchain.outputs.name}}
+  #     - name: cargo install cargo-deb
+  #       run: cargo install cargo-deb
+
+  #     - name: Install build dependencies
+  #       run: sudo apt update && sudo apt install ${{ matrix.build_deps }}
+  #       if: matrix.build_deps != ''
+
+  #     - name: Set up .cargo/config
+  #       run: |
+  #         mkdir .cargo
+  #         echo '${{ matrix.cargo_config }}' >.cargo/config
+  #       if: matrix.cargo_config != ''
+
+  #     - name: cargo build
+  #       run: cargo build --release --locked --target ${{ matrix.target }} ${{ matrix.build_flags }}
+  #       working-directory: ./rage
+
+  #     - name: Update Debian package config for cross-compile
+  #       run: sed -i '/\/_\?rage-mount/d' rage/Cargo.toml
+  #       if: matrix.name != 'linux'
+
+  #     - name: cargo deb
+  #       run: cargo deb --package rage --no-build --target ${{ matrix.target }} ${{ matrix.deb_flags }}
+
+  #     - name: Generate artifact attestation
+  #       uses: actions/attest-build-provenance@v1
+  #       with:
+  #         subject-path: 'target/${{ matrix.target }}/debian/*.deb'
+
+  #     - name: Upload Debian package as artifact
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: rage-${{ matrix.name }}.deb
+  #         path: target/${{ matrix.target }}/debian/*.deb
+  #       if: github.event.inputs.test == 'true'
+
+  #     - name: Upload Debian package to release
+  #       uses: svenstaro/upload-release-action@2.9.0
+  #       with:
+  #         repo_token: ${{ secrets.GITHUB_TOKEN }}
+  #         file: target/${{ matrix.target }}/debian/*.deb
+  #         tag: ${{ github.ref }}
+  #         file_glob: true
+  #         prerelease: true
+  #       if: github.event.inputs.test != 'true'
+
