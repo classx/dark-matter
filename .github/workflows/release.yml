@@ -48,7 +48,7 @@ jobs:
         if: matrix.platform.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gpg libgpgme-dev libgpg-error-dev
+          sudo apt-get install -y gpg libgpgme-dev libgpg-error-dev librust-libgpg-error-sys-dev librust-gpg-error-dev
 
       - name: Build binary
         run: |
@@ -79,7 +79,7 @@ jobs:
       - name: Install git and dependencies
         run: |
           dnf update -y
-          dnf install -y git gcc gcc-c++ make curl gpgme libgpg-error
+          dnf install -y git gcc gcc-c++ make curl gpgme libgpg-error libgpg-error-devel
 
       - name: Checkout
         uses: actions/checkout@v4
