@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ArgAction};
 use gpgme::{Context, Protocol};
 use rusqlite::Connection;
 use std::fs;
@@ -34,10 +34,32 @@ pub enum Commands {
         #[command(subcommand)]
         action: SecretsCommands,
     },
+    /// Encrypt yaml/json fields
+    Sops {
+        #[command(subcommand)]
+        action: SopsCommand,
+    },
     /// Key validation and diagnostics
     Keys {
         #[command(subcommand)]
         action: KeysCommands,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum SopsCommand {
+    /// Encrypt yaml/json file
+    Encrypt{
+        /// File name
+        file: String,
+        /// Optional path to fields, by default encrypt all fields
+        #[arg(short, long, action = ArgAction::Append)]
+        nodes: Vec<String>
+    },
+    /// Decrypt yaml/json file
+    Decrypt {
+        /// File name
+        file: String,
     },
 }
 
@@ -796,6 +818,17 @@ impl DataManager {
     }
 }
 
+fn handle_sops_command(action: SopsCommand) -> Result<(), DmError> {
+    match action {
+        SopsCommand::Encrypt { file, nodes } => {
+            Ok(())
+        }
+        SopsCommand::Decrypt { file } => {
+            Ok(())
+        }
+    }
+}
+
 fn handle_secrets_command(action: SecretsCommands) -> Result<(), DmError> {
     match action {
         SecretsCommands::Add { name, value, tags } => {
@@ -873,6 +906,7 @@ fn main() {
         Commands::File { action } => handle_file_command(action),
         Commands::Keys { action } => handle_key_command(action),
         Commands::Secret { action } => handle_secrets_command(action),
+        Commands::Sops { action } => handle_sops_command(action),
     };
     if let Err(error) = result {
         eprintln!("{}", error);
